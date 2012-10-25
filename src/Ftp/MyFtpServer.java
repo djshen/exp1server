@@ -15,7 +15,8 @@ public class MyFtpServer
 private final FtpServer server;
 private UserFactory userFactory;
 private UserManager userManager;
-private final String rootPath = "D:/FTP/";
+private final String rootPath = "/home/jack1/eclipse_workspace/exp1/exp1server/ftp/room/";
+private final String imgPath = "/home/jack1/eclipse_workspace/exp1/exp1server/ftp/img/";
 
 public MyFtpServer() throws Exception 
 {
@@ -51,6 +52,10 @@ public MyFtpServer() throws Exception
    userFactory.setAuthorities(authorities);
    userFactory.setMaxIdleTime(60);
    userManager = userManagerFactory.createUserManager();
+   userFactory.setName("IMG");
+   userFactory.setPassword("IMG");
+   userFactory.setHomeDirectory(imgPath);
+   userManager.save(userFactory.createUser());
 
    Map<String, Ftplet> map = new HashMap<String, Ftplet>();
    map.put("MyFtplet", new MyFtplet());
@@ -58,6 +63,7 @@ public MyFtpServer() throws Exception
    serverFactory.setUserManager(userManager);
         
    server = serverFactory.createServer(); 
+   System.out.println("Ftp Server ok");
 }
 
 public void start() throws FtpException
