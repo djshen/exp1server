@@ -15,7 +15,7 @@ public class MyFtpServer
 private final FtpServer server;
 private UserFactory userFactory;
 private UserManager userManager;
-private final String rootPath = "D:/FTP/";
+private final String rootPath = "D:/AppServ/www/exp1/";
 
 public MyFtpServer() throws Exception 
 {
