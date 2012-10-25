@@ -6,7 +6,7 @@ public class Room
 private String name;
 private String password;
 private static Server server;
-private User manager;
+public User manager;
 private Hashtable<String, User> users;
 
 public Room(String n, User u, String pw)
@@ -43,13 +43,46 @@ public boolean hasPassword()
 
 public boolean containsUserName(String userName)
 {
-	if(users.containsKey(userName))
+	synchronized(users)
 	{
-		return true;
+		if(users.containsKey(userName))
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
 	}
-	else
+}
+
+public String getExistedUser()
+{
+	synchronized(users)
 	{
-		return false;
+		String userList = new String();
+		Iterator<User> iter = users.values().iterator();
+		while(iter.hasNext())
+		{
+			try
+			{
+				userList = userList + iter.next().getName() + "/";
+			}
+			catch(NoSuchElementException e)
+			{
+				System.err.println(e.toString());
+				e.printStackTrace();
+			}
+		}
+		if(!userList.isEmpty())
+		{
+			try
+			{
+				userList = userList.substring(0, userList.length()-1);
+			}
+			catch(Exception e){}
+		}
+	return userList;
 	}
 }
 
@@ -63,48 +96,92 @@ public void allowJoin(User user)
 
 public void joinRoom(User user, String pw) throws Exception
 {
-	System.out.println("join");
-	if(password.equals(pw))
-	{
+	//System.out.println("join");
+	//if(password.equals(pw))
+	//{
 		addUser(user);
-	}
-	else
-	{
-		throw new Exception("Password is not correct");
-	}
+	//}
+	//else
+	//{
+	//	throw new Exception("Password is not correct");
+	//}
+}
+
+public void joinRoomRequest(String un, String pw) throws Exception
+{
+	//System.out.println("join");
+	//if(password.equals(pw))
+	//{
+		manager.getJoinReply(getName(), un);
+	//}
+	//else
+	//{
+	//	throw new Exception("Password is not correct");
+	//}
 }
 
 public void addUser(User u)
 {
 	System.out.println("addUser");
-	users.put(u.getName(), u);
+	synchronized(users)
+	{
+		users.put(u.getName(), u);
+	}
+	send("u/" + u.getName() + "/");
 	String msg = new String("Server : User#" + u.getName() + " joined");
 	msg = "r/" + getName() + "/" + msg;
 	send(msg);
 }
 
-public void kickUser(String userName, String mng) throws NoSuchElementException
+public void kickUser(String userName, String mng) throws Exception
 {
+	System.err.println(userName + " " + mng + " " + manager.getName());
 	if(containsUserName(userName) && mng.equals(manager.getName()))
 	{
 		try
 		{
 			User user = users.get(userName);
-			user.kicked(getName());
+			user.kicked(getName(), mng);
+			removeUser(userName);
 			String msg = new String("Server : User#" + user.getName() + " kicked");
 			msg = "r/" + getName() + "/" + msg;
 			send(msg);
 		}
-		catch(NullPointerException e)
+		catch(Exception e)
 		{
 			System.err.println(e.toString());
 			e.printStackTrace();
-			throw new NoSuchElementException("User not found");
+			throw new Exception("User not found");
 		}
 	}
 	else
 	{
-		throw new NoSuchElementException("User not found");
+		throw new Exception("Not manager");
+	}
+}
+
+public void removeUser(String userName) throws Exception
+{
+	synchronized(users)
+	{
+		if(containsUserName(userName))
+		{
+			try
+			{
+				users.remove(userName);
+				System.err.println("User: " + userName + " removed from " + getName());
+			}
+			catch(Exception e)
+			{
+				System.err.println(e.toString());
+				e.printStackTrace();
+				throw new Exception("User not found");
+			}
+		}
+		else
+		{
+			throw new Exception("User not found");
+		}
 	}
 }
 
@@ -113,8 +190,6 @@ public void kickUser(String userName, String mng) throws NoSuchElementException
  ***************************************/
 public void send(String msg)
 {
-	System.out.println("Room#" + getName() + " " + msg);
-	System.out.println("size=" + users.size());
 	Iterator<User> iter = users.values().iterator();
 	while(iter.hasNext())
 	{

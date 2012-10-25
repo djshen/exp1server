@@ -9,12 +9,14 @@ public class User implements Runnable
 private static Server server;
 private String name;
 private Socket socket;
+public HashMap<String, Room> rooms;
 private DataInputStream in;
 private DataOutputStream out;
 
 public User(Socket s) throws Exception
 {
 	socket = s;
+	rooms = new HashMap<String, Room>();
 	in = new DataInputStream(socket.getInputStream());
 	out = new DataOutputStream(socket.getOutputStream());
 	//get name
@@ -44,6 +46,7 @@ public User(Socket s) throws Exception
 		}
 		try
 		{
+			out.writeUTF("ack");
 			server.addUser(name, this);
 			break;
 		}
@@ -54,8 +57,6 @@ public User(Socket s) throws Exception
 			out.writeUTF("e/c/User name exists");
 		}
 	}
-	//already addUser
-	out.writeUTF("ack");
 }
 
 /***************************************
@@ -69,6 +70,22 @@ public static void setServer(Server sv)
 public String getName()
 {
 	return name;
+}
+
+private boolean containsRoomName(String roomName)
+{
+	synchronized(rooms)
+	{
+		System.err.println(rooms.toString());
+		if(rooms.containsKey(roomName))
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
 }
 
 /***************************************
@@ -91,7 +108,7 @@ public void sendToClient(String msg)
 
 public void sendToRoom(String roomName, String msg)
 {
-	msg = "r/" + roomName + "/" + getName() + " : " + msg;
+	msg = "r/" + roomName + "/<img src='http://140.112.18.211/exp1/userimg/"+getName()+".jpg' width='50px' height='50px'>" + getName() + " says: " + msg;
 	try
 	{
 		server.sendToRoom(roomName, msg);
@@ -106,7 +123,7 @@ public void sendToRoom(String roomName, String msg)
 
 public void sendToUser(String userName, String msg)
 {
-	msg = "s/" + userName + "/" + getName() + " : " + msg;
+	msg = "s/" + userName + "/<img src='http://140.112.18.211/exp1/userimg/"+getName()+".jpg' width='50px' height='50px'>" + getName() + " says to you: " + msg;
 	//System.out.println(msg);
 	try
 	{
@@ -128,13 +145,104 @@ public void createRoom(String roomName, String pw)
 	try
 	{
 		server.createRoom(roomName, this, pw);
+		out.writeUTF("c/" + roomName + "/ack");
+		synchronized(rooms)
+		{
+			rooms.put(roomName, server.rooms.get(roomName));
+			System.err.println(rooms.toString());
+		}
 	}
 	catch(Exception e)
 	{
 		System.err.println(e.toString());
 		e.printStackTrace();
 		//TODO send error msg
+		try
+		{
+			out.writeUTF("c/" + roomName + "/nak");
+		}
+		catch(Exception e1)
+		{
+		}
 	}
+}
+
+public void joinRoomRequest(String roomName) throws Exception
+{
+	try
+	{
+		server.joinRoomRequest(getName(), roomName, "");
+	}
+	catch(Exception e)
+	{
+		System.err.println(e.toString());
+		e.printStackTrace();
+		System.err.println("Cannot join room: " + roomName);
+	}
+}
+
+public void getJoinReply(String roomName, String un)
+{
+	try
+	{
+		out.writeUTF("a/" + roomName + "/" + un);
+	}
+	catch(Exception e){}
+}
+
+public void joinRoom(String rn, Room room)
+{
+	try
+	{
+		//out.writeUTF();
+	}
+	catch(Exception e){}
+}
+
+public void joinRoomReply(String rn, String un, boolean r)
+{
+	try
+	{
+		server.joinRoomReply(rn, un, r);
+		synchronized(rooms)
+		{
+			rooms.put(rn, server.rooms.get(rn));
+			System.err.println(rooms.toString());
+		}
+	}
+	catch(Exception e){}
+}
+
+public void leaveRoom(String roomName) throws Exception
+{
+	if(containsRoomName(roomName))
+	{
+		try
+		{
+			synchronized(rooms)
+			{
+				System.err.println(rooms.toString());
+				Room room = rooms.get(roomName);
+				if(room.manager.getName().equals(getName()))
+				{
+					//server.leaveRoomAll(roomName);
+				}
+				else
+				{
+					room.removeUser(getName());
+					server.leaveRoom(roomName, getName());
+				}
+			}
+		}
+		catch(Exception e)
+		{
+			System.err.println(e.toString());
+			e.printStackTrace();
+			System.err.println("Cannot leave room: " + roomName);
+		}
+	}
+	else
+		throw new Exception("Cannot find room: " + roomName);
 }
 
 public void kickUser(String roomName, String userName)
@@ -151,27 +259,27 @@ public void kickUser(String roomName, String userName)
 	}
 }
 
-/*public allowJoin(String userName, String roomName)
-{
-	sendToClient("j/" + "roomName" + "/" + userName);
-}*/
-
-public void joinRoom(String roomName, String pw)
+public void kicked(String roomName, String mng)
 {
 	try
 	{
-		server.joinRoom(this, roomName, pw);
+		sendToClient("k/" + roomName + "/" + mng);
+		synchronized(rooms)
+		{
+			System.err.println(rooms.toString());
+			rooms.remove(roomName);
+		}
 	}
-	catch(Exception e)
-	{
-		System.err.println(e.toString());
-		e.printStackTrace();
-		//TODO send error msg
-	}
+	catch(Exception e){}
 }
 
-public void kicked(String roomName)
+public void sendFileInfo(String rn, String fn)
 {
+	try
+	{
+		server.sendFileInfo(rn, getName(), fn);
+	}
+	catch(Exception e){}
 }
 
 /***************************************
@@ -179,7 +287,7 @@ public void kicked(String roomName)
  ***************************************/
 private void parseMsg(String msg)
 {
-	//System.out.println(msg);
+	System.out.println(msg);
 	String[] msgs;
 	try
 	{
@@ -192,6 +300,11 @@ private void parseMsg(String msg)
 				sendToRoom(msgs[1], msgs[2]);
 				break;
 			}
+			case 'm'://send to main room
+			{
+				server.sendToMainRoom(msgs[2]);
+				break;
+			}
 			case 's'://secret chat
 			{
 				sendToUser(msgs[1], msgs[2]);
@@ -199,7 +312,17 @@ private void parseMsg(String msg)
 			}
 			case 'j'://join room
 			{
-				joinRoom(msgs[1], msgs[2]);
+				joinRoomRequest(msgs[1]);
+				break;
+			}
+			case 'y'://yes join room
+			{
+				joinRoomReply(msgs[1], msgs[2], true);
+				break;
+			}
+			case 'n'://no join room
+			{
+				joinRoomReply(msgs[1], msgs[2], false);
 				break;
 			}
 			case 'c'://create room
@@ -207,15 +330,29 @@ private void parseMsg(String msg)
 				createRoom(msgs[1], msgs[2]);
 				break;
 			}
+			case 'l'://leave
+			{
+				leaveRoom(msgs[1]);
+				break;
+			}
 			case 'k'://kick
 			{
-				kickUser(msgs[0], msgs[1]);
+				kickUser(msgs[1], msgs[2]);
+				break;
+			}
+			case 'f'://file
+			{
+				sendFileInfo(msgs[1], msgs[2]);
 				break;
 			}
 			case 'e'://error occur
 			{
 				parseErr(msgs[1]);
 				break;
+			}
+			default:
+			{
+				System.err.println("undefined msg: " + msg);
 			}
 		}
 	}
@@ -260,6 +397,15 @@ public void run()
 	{
 		System.err.println(e.toString());
 		e.printStackTrace();
+		try
+		{
+			server.removeUser(name);
+		}
+		catch(Exception e1)
+		{
+			System.err.println(e1.toString());
+			e1.printStackTrace();
+		}
 	}
 }
 }

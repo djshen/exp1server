@@ -5,43 +5,25 @@ import java.util.*;
 import java.lang.Thread;
 import Server.Room;
 import Server.User;
+import Ftp.*;
 public class Server 
 {
-//private int userCount;
-//private int roomCount;
+private MainRoom mainRoom;
 public Hashtable<String, User> users;
 public Hashtable<String, Room> rooms;
 public ServerSocket serverSocket;
+public MyFtpServer ftpServer;
 
 public Server(int p, int b)
 {
 	try
 	{
-		//userCount = 0;
-		//roomCount = 0;
 		serverSocket = new ServerSocket(p, b);
+		mainRoom = new MainRoom(this);
 		users = new Hashtable<String, User>();
 		rooms = new Hashtable<String, Room>();
 		User.setServer(this);
 		Room.setServer(this);
-		//listen and add user to users
-		/*while(true)
-		{
-			Socket socket = serverSocket.accept();
-			//System.out.println("someone wants to connect");
-			try
-			{
-				User user = new User(socket);
-				Thread thread = new Thread(user);
-				thread.start();
-			}
-			catch(Exception e)
-			{
-				System.err.println(e.toString());
-				e.printStackTrace();
-				socket.close();
-			}
-		}*/
 		Thread userListener = new Thread(new UserListener(serverSocket));
 		userListener.start();
 		Thread thread = new Thread(new ServerMessageReceiver(this));
@@ -53,16 +35,16 @@ public Server(int p, int b)
 		System.err.println(e.toString());
 		e.printStackTrace();
 	}
-	/*try
+	try
 	{
-		serverSocket.close();
-		//System.out.println("close");
+		ftpServer = new MyFtpServer();
+		ftpServer.start();
 	}
 	catch(Exception e)
 	{
 		System.err.println(e.toString());
 		e.printStackTrace();
-	}*/
+	}
 }
 
 public void close()
@@ -117,9 +99,43 @@ public void addUser(String userName, User user) throws Exception
 		{
 			try
 			{
+				Iterator<User> iter = users.values().iterator();
+				while(iter.hasNext())
+				{
+					//update user list
+					try
+					{
+						User u = iter.next();
+						u.sendToClient("u/Main Page/" + userName);
+						sendToMainRoom("User: " + userName + " joined");
+						user.sendToClient("u/Main Page/" + u.getName());
+					}
+					catch(Exception e)
+					{
+						System.err.println(e.toString());
+						e.printStackTrace();
+					}
+				}
+				user.sendToClient("u/Main Page/" + userName);
 				users.put(userName, user);
+				Iterator<Room> iter1 = rooms.values().iterator();
+				while(iter1.hasNext())
+				{
+					//update room list
+					try
+					{
+						Room room = iter1.next();
+						user.sendToClient("x/" + room.getName() + "/");
+						user.rooms.put(room.getName(), room);
+					}
+					catch(Exception e)
+					{
+						System.err.println(e.toString());
+						e.printStackTrace();
+					}
+				}
 			}
-			catch(NullPointerException e)
+			catch(Exception e)
 			{
 				System.err.println(e.toString());
 			}
@@ -127,6 +143,20 @@ public void addUser(String userName, User user) throws Exception
 		}
 		else
 			throw new Exception("User name exists");
+	}
+}
+
+public void removeUser(String userName) throws Exception
+{
+	synchronized(users)
+	{
+		if(containsUserName(userName))
+		{
+			users.remove(userName);
+			System.out.println("User#" + userName + "is removed");
+		}
+		else
+			throw new Exception("User name not found");
 	}
 }
 
@@ -149,6 +179,11 @@ public void broadcast(String msg)
 			e.printStackTrace();
 		}
 	}
+}
+
+public void sendToMainRoom(String msg) throws Exception
+{
+	mainRoom.send(msg);
 }
 
 public void sendToRoom(String roomName, String msg) throws Exception
@@ -208,11 +243,36 @@ public void createRoom(String roomName, User user, String password) throws Excep
 			room = new Room(roomName, user, password);
 			rooms.put(roomName, room);
 		}
+		user.sendToClient("u/" + roomName + "/" + user.getName());
 		System.out.println("Room#" + roomName + " created by " + user.getName());
+		sendToMainRoom(user.getName() + " created room: " + roomName);
+		Iterator<User> iter = users.values().iterator();
+		while(iter.hasNext())
+		{
+			//update room list
+			try
+			{
+				iter.next().sendToClient("z/" + roomName + "/" + user.getName());
+			}
+			catch(Exception e)
+			{
+				System.err.println(e.toString());
+				e.printStackTrace();
+			}
+		}
 	}
 	else
 	{
 		throw new Exception("Cannot create room");
+	}
+	try
+	{
+		ftpServer.addUser(roomName);
+	}
+	catch(Exception e)
+	{
+		System.err.println(e.toString());
+		e.printStackTrace();
 	}
 }
 
@@ -224,6 +284,7 @@ public void kickUser(String roomName, String userName, String manager) throws Ex
 		{
 			Room room = rooms.get(roomName);
 			room.kickUser(userName, manager);
+			room.send("w/" + room.getName() + "/" + userName);
 		}
 		catch(NullPointerException e)
 		{
@@ -238,7 +299,7 @@ public void kickUser(String roomName, String userName, String manager) throws Ex
 	}
 }
 
-public void joinRoom(User user, String roomName, String pw) throws Exception
+/*public void joinRoom(User user, String roomName, String pw) throws Exception
 {
 	if(containsRoomName(roomName))
 	{
@@ -246,12 +307,135 @@ public void joinRoom(User user, String roomName, String pw) throws Exception
 		{
 			Room room = rooms.get(roomName);
 			room.joinRoom(user, pw);
+			user.joinRoom(roomName, room);
 		}
 		catch(Exception e)
 		{
 			System.err.println(e.toString());
 			e.printStackTrace();
 			throw new Exception("Cannot join");
+		}
+	}
+	else
+	{
+		throw new Exception("Room not found");
+	}
+}*/
+
+public void joinRoomRequest(String un, String roomName, String pw) throws Exception
+{
+	if(containsRoomName(roomName))
+	{
+		try
+		{
+			Room room = rooms.get(roomName);
+			room.joinRoomRequest(un, pw);
+		}
+		catch(Exception e)
+		{
+			System.err.println(e.toString());
+			e.printStackTrace();
+			throw new Exception("Cannot join");
+		}
+	}
+	else
+	{
+		throw new Exception("Room not found");
+	}
+}
+
+public void joinRoomReply(String rn, String un, boolean r)
+{
+	try
+	{
+		Room room = rooms.get(rn);
+		User user = users.get(un);
+		if(r)
+		{
+			String userList = room.getExistedUser();
+			/*if(userList.isEmpty())
+			{
+				userList = userList + un;
+			}
+			else
+			{
+				userList = userList + "/" + un;
+			}*/
+			user.sendToClient("y/" + rn + "/" + userList);
+			room.addUser(user);
+			//update user list
+			room.send("u/" + rn + "/" + un);
+		}
+		else
+		{
+			user.sendToClient("n/" + rn + "/");
+		}
+	}
+	catch(Exception e){}
+}
+
+public void deleteRoom(String roomName) throws Exception
+{
+	if(containsRoomName(roomName))
+	{
+		try
+		{
+			rooms.remove(roomName);
+			ftpServer.deleteUser(roomName);
+		}
+		catch(Exception e)
+		{
+			System.err.println(e.toString());
+			e.printStackTrace();
+			throw new Exception("Cannot delete room");
+		}
+	}
+	else
+	{
+		throw new Exception("Room not found");
+	}
+}
+
+public void sendFileInfo(String rn, String un, String fn) throws Exception
+{
+	if(containsRoomName(rn))
+	{
+		try
+		{
+			Room room = rooms.get(rn);
+			room.send("f/" + rn + "/" + un + "/" + fn);
+		}
+		catch(Exception e)
+		{
+			System.err.println(e.toString());
+			e.printStackTrace();
+			throw new Exception("Cannot send file info to room");
+		}
+	}
+	else
+	{
+		throw new Exception("Room not found");
+	}
+}
+
+public void leaveRoom(String rn, String un) throws Exception
+{
+	if(containsRoomName(rn))
+	{
+		try
+		{
+			synchronized(rooms)
+			{
+				Room room = rooms.get(rn);
+				room.removeUser(un);
+				room.send("l/" + rn + "/" + un);
+			}
+		}
+		catch(Exception e)
+		{
+			System.err.println(e.toString());
+			e.printStackTrace();
+			throw new Exception("Cannot remove " + un + " from " + rn);
 		}
 	}
 	else
