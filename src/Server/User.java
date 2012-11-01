@@ -108,7 +108,7 @@ public void sendToClient(String msg)
 
 public void sendToRoom(String roomName, String msg)
 {
-	msg = "r/" + roomName + "/<img src='http://140.112.18.211/exp1/userimg/"+getName()+".jpg' width='50px' height='50px'>" + getName() + " says: " + msg;
+	msg = "r/" + roomName + "/<img src=\"http://140.112.18.211/exp1/userimg/"+getName()+".jpg\" width=\"50px\" height=\"50px\">" + getName() + " says: " + msg;
 	try
 	{
 		server.sendToRoom(roomName, msg);

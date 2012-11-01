@@ -15,8 +15,8 @@ public class MyFtpServer
 private final FtpServer server;
 private UserFactory userFactory;
 private UserManager userManager;
-private final String rootPath = "/home/jack1/eclipse_workspace/exp1/exp1server/ftp/room/";
-private final String imgPath = "/home/jack1/eclipse_workspace/exp1/exp1server/ftp/img/";
+private final String rootPath = "D:/AppServ/www/exp1/room/";
+private final String imgPath = "D:/AppServ/www/exp1/userimg/";
 
 public MyFtpServer() throws Exception 
 {
